@@ -1,0 +1,819 @@
+---
+title: 'Finding The Relationship between Coal and Oil Based Fuel in Per Capita CO2 Emission in USA from 1860-2020 - Hybrid ARIMA-NNAR Modeling Approach'
+author: "Anirban Maity, Adjunct Professor of Statistics, Dept. of Mathematics, Adamas university"
+date: "06/03/2025"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+*Important Libraries*
+```{r}
+library(readxl)
+library(summarytools)
+library(stringr)
+library(forecast)
+library(grid)
+library(tseries)
+library(nnfor)
+library(forecast)
+library(fitdistrplus)
+library(ggplot2)
+library(qqplotr)
+library(ggthemes)
+```
+
+*Data Import in R-Studio*
+```{r}
+file_path = "D:/Project - Dark Night/Data/India.xlsx"
+raw_data =  read_excel(file_path)
+raw_data
+```
+
+*Split The Raw data into Training and Testing Set*
+```{r}
+train = raw_data[1:71,]
+test = raw_data[72:91,]
+```
+
+```{r}
+train
+```
+
+```{r}
+summarytools::descr(raw_data$Coal)
+summarytools::descr(raw_data$Oil)
+```
+```{r}
+ts_data_Coal = ts(raw_data$Coal, start = 1930, frequency = 1)
+ts_data_Oil = ts(raw_data$Oil, start = 1930, frequency = 1)
+ts_data_year = ts(raw_data, start = 1930, frequency = 1)
+```
+
+*Data Visualization*
+
+```{r}
+#png("D:/Project - Dark Night/Output/Plot/Coal_Time_Plot.png", width = 1000, height = 500)
+plot(raw_data$Year, ts_data_Coal, type='o', main = "Annual Co2 emission Per Capita in India 1930-2020 From Coal Based Fuel", xlab = "YEAR", ylab = "Per Capita CO2 Emissions (Coal Based Fuel)", cex.main=1.2,cex.lab=1.2, col="darkgreen", lwd = 2)
+grid(col = "black", lwd = 2)
+#plot(raw_data$Year, ts_data_Oil, type='o', main = "Annual Co2 emission Per Capita in India 1930-2020 From Coal Based Fuel", xlab = "YEAR", ylab = "CO2 Emissions due to (Oil Based Fuel)", cex.main=0.80,cex.lab=0.75, col="blue")
+```
+
+```{r}
+#ACF and PACF Plot for Coal Based CO2 emission Data
+#png("D:/Project - Dark Night/Output/Plot/Coal_Raw_ACFPACF_Plot.png", width = 1000, height = 500)
+par(mfrow=c(1,2))
+acf(ts_data_Coal, main="ACF plot for coal based CO2 emission per capita", ylim = c(-1,1), col = "red",cex.main=1.2,cex.lab=1.2)
+pacf(ts_data_Coal, main="PACF plot for coal based CO2 emission per capita", ylim = c(-1,1), col = "red",cex.main=1.2,cex.lab=1.2)
+
+#par(mfrow=c(1,2))
+#acf(ts_data_Oil, main="ACF plot for Oil Based CO2 Emission", ylim = c(-1,1), col = "red")
+#pacf(ts_data_Oil, main="PACF plot for Oil Based CO2 Emission", ylim = c(-1,1), col = "red")
+```
+
+```{r}
+#png("D:/Project - Dark Night/Output/Plot/Coal_diff_Plot.png", width = 1000, height = 500)
+par(mfrow = c(1,2))
+dif_1_Coal<-diff(ts_data_Coal, differences = 1)
+plot(dif_1_Coal, type='l', col = "blue", ylab="Diferenced of CO2 emission Value", cex.lab=1.5, main="First Order Diferenced in CO2 emissions per capita", cex.main=1.2,xlab = "Year")
+
+dif_2_Coal<-diff(ts_data_Coal, differences = 2)
+plot(dif_2_Coal, type='l', col = "blue", ylab="Diferenced of CO2 emission Value", cex.lab=1.5, main="Second Order Diferenced in CO2 emissions per capita", cex.main=1.2,xlab = "Year")
+```
+
+```{r}
+par(mfrow = c(1,2))
+dif_1_Oil<-diff(ts_data_Oil, differences = 1)
+plot(dif_1_Oil, type='l', col = "blue", ylab="Diferenced of CO2 emission Value", cex.lab=0.75, main="First Order Diferenced in CO2 emissions from Oil Based Fuel", cex.main=0.80, xlab = "Year")
+
+dif_2_Oil<-diff(ts_data_Oil, differences = 2)
+plot(dif_2_Oil, type='l', col = "blue", ylab="Diferenced of CO2 emission Value", cex.lab=0.75, main="Second Order Diferenced in CO2 emissions from Oil Based Fuel", cex.main=0.80, xlab = "Year")
+```
+
+```{r}
+kpss.test(dif_1_Coal, null="Trend") 
+kpss.test(dif_2_Coal, null="Trend")
+
+kpss.test(dif_1_Oil, null="Trend") 
+kpss.test(dif_2_Oil, null="Trend")
+```
+
+```{r}
+#png("D:/Project - Dark Night/Output/Plot/Coal_ACFPACF_Plot.png", width = 1000, height = 500)
+par(mfrow = c(1,2))
+acf(dif_2_Coal, main="ACF Plot of CO2 Emission by Coal Based Fuel", ylim = c(-1,1), col = "red")
+axis(side = 1, at=seq(0, 20, 1), cex.lab=1.5, cex.main=1.5)
+pacf(dif_2_Coal, main = "PACF Plot of CO2 Emission by Coal Based Fuel", ylim = c(-1,1), col = "red")
+axis(side = 1, at=seq(0, 20, 1), cex.lab=1.5, cex.main=1.5)
+```
+*ARIMA Model Building: Training DataSet *
+**ARIMA on Actual Dataset And Checking Its Performance By Residual Analysis**
+```{r}
+ts_train_data_coal = ts(train$Coal, start = 1930, frequency = 1)
+ts_train_data_year = ts(train, start = 1930, frequency = 1)
+
+Ar_ord = c(1)
+Ma_ord = c(1)
+Model_order = c()
+model_aic = c()
+for (i in 1:length(Ar_ord)) {
+  for (j in 1:length(Ma_ord)) {
+    # Fit ARIMA model
+    fitted_ARIMA <- tryCatch({
+      arima(ts_train_data_coal, order = c(Ar_ord[i], 2, Ma_ord[j]))
+    }, error = function(e) {
+      message("Error fitting ARIMA(", Ar_ord[i], ", 2, ", Ma_ord[j], "): ", e$message)
+      return(NULL)  # Return NULL to indicate failure
+    })
+    # If the model is fitted successfully, print AIC
+    if (!is.null(fitted_ARIMA)) {
+      print(fitted_ARIMA)
+      
+      checkresiduals(fitted_ARIMA)
+      # You can store the results if needed
+      Model_order <- c(Model_order, paste(Ar_ord[i], 2, Ma_ord[j], sep = "-"))
+      model_aic <- c(model_aic, fitted_ARIMA$aic)
+    } else {
+      # Skip the iteration if the model couldn't be fitted
+      next
+    }
+  }
+}
+#Model information table
+Model_info_table_coal = data.frame(Model_order,model_aic)
+Model_info_table_coal
+```
+*ARIMA(p,d,q) model selection w.r.t minimum AIC value | Coal Based Fuel*
+```{r}
+#Creating this variable to store the residual information of ARIMA(p,d,q) model for different value of p, d, q)
+Model_residu_info = list() # This list stored the residual obtained from the ARIMA(p,d,q) model
+for (i in 1:dim(Model_info_table_coal)[1]){
+  if (Model_info_table_coal$model_aic[i]==min(model_aic)){
+    my_string = Model_info_table_coal$Model_order[i]
+    numbers = strsplit(my_string, "-")[[1]]
+    first_number = as.integer(numbers[1])
+    second_number = as.integer(numbers[2])
+    third_number = as.integer(numbers[3])
+    as.integer(first_number)
+    #fitting ARIMA(p, d, q) model on Coal based Fuel CO2 Emission Data
+    arima_fit_coal = arima(ts_train_data_coal, order = c(first_number,second_number,third_number)) 
+    print(arima_fit_coal)
+    print(accuracy(arima_fit_coal))
+    checkresiduals(arima_fit_coal) #Residual Diagnostics Plot for the residuals obtained from the fitted model
+    arima_fit_coal
+    fit.arima.coal = fitted(arima_fit_coal) #used to extract the fitted values
+    plot(ts_train_data_coal, ylab = "Annual CO2 Emission Per Capita by Coal Based Fuel", xlab = "Year", main = str_c("Observed Vs. Fitted ARIMA(",first_number,",",second_number,",",third_number,") of CO2 emission by Coal Based Fuel", sep = " "), cex.lab=1.5, cex.main=1.5, col = "blue",lty=1, type = "l", lwd = 2)
+    lines(fit.arima.coal, col = "red", lty=1, lwd = 2)
+    grid(col = "black", lwd = 1)
+    legend(x = "topleft", box.col = "blue", bg = "yellow", box.lwd = 1, title = "Observed vs. Fitted", legend = c("Observed", "Fitted"), fill = c("blue", "red"), text.font = 4)
+    residual_coal = residuals(arima_fit_coal) #Used to extract the residuals from the fitted model
+    model_name = paste("ARIMA", "(", first_number, ",", second_number, ",", third_number, ")", sep = "")
+    Model_residu_info[[model_name]] = residual_coal
+  }
+}
+```
+
+*Forecasting on Training Data Set: 1930-2000*
+```{r}
+# 2. Fit the ARIMA(3,2,3) model on log-transformed data
+fit_arima <- arima(ts_train_data_coal, order = c(1,2,1))
+# 3. Forecast 20 steps ahead
+forecast_arima <- forecast(fit_arima, h = 20)
+forecast_arima
+autoplot(forecast_arima)
+accuracy(forecast_arima)
+#QQ Plot of Residual obtained from ARIMA(1,2,1) Model Fitting
+res_data = residuals(fit_arima)
+#png("D:/Project - Dark Night/Output/Plot/ARIMA_QQ_Residual_Plot.png", width = 1000, height = 500)
+
+# 2. Normal Q-Q Plot of Residuals
+qqnorm(res_data, main = "Normal Q-Q Plot of Resudals Obtained from ARIMA (1,2,1) Model", col = "blue")
+qqline(res_data, col = "red")
+```
+*Model Validation on Test data Set: 2001 - 2020*
+```{r}
+ts_test_data_coal = ts(test$Coal , start = 2001, frequency = 1)
+ts_test_data_year = ts(test, start = 2001, frequency = 1)
+# Fit the ARIMA model
+df1 = data.frame(Year  = raw_data$Year[72:91], Forecasted_CO2_Emission = forecast_arima$mean,  Actual_CO2_Emission = ts_test_data_coal)
+df1
+# Convert the second column (Forecasted_CO2_Emission) into numeric
+df1$Forecasted_CO2_Emission <- as.numeric(df1$Forecasted_CO2_Emission)
+#png("D:/Project - Dark Night/Output/Plot/ARIMA_Valid_Plot.png", width = 1000, height = 500)
+# Now, plot the data
+plot(df1$Year, df1$Actual_CO2_Emission, type = 'o', lwd = 2,
+     main = "Annual CO2 Emission Per Capita in India 2001-2020 From Coal Based Fuel", 
+     xlab = "YEAR", ylab = "CO2 Emissions Per Capita Due to Coal Based Fuel", 
+     cex.main = 1.1, cex.lab = 1.2, col = "blue")
+# Add forecasted CO2 emissions in red
+lines(df1$Year, df1$Forecasted_CO2_Emission, col = "red", lwd = 2, type = 'o')
+grid(col = "black", lwd = 1)
+legend(x = "topleft", box.col = "blue", bg = "yellow", box.lwd = 1, title = "Actual vs. Forecast", legend = c("Actual", "Forecast"), fill = c("blue", "red"), text.font = 4)
+```
+
+
+```{r}
+# 2. Fit the ARIMA(1,3,2) model on log-transformed data
+fit_arima_final <- arima(ts_data_Coal, order = c(1,2,1))
+# 3. Forecast 20 steps ahead
+forecast_arima_final <- forecast(fit_arima_final, h = 10)
+forecast_arima_final
+autoplot(forecast_arima_final)
+accuracy(forecast_arima_final)
+```
+*NNAR(p,k) Model Building,Forecasting, Validation*
+
+```{r}
+library(neuralnet)
+library(ggplot2)
+
+# Normalize the data (scale Coal between 0 and 1)
+scaled_data <- scale(raw_data$Coal)
+years <- raw_data$Year
+
+# Define training and testing year ranges
+train_years <- 1930:2000
+test_years <- 2001:2020
+
+# Store evaluation results
+results <- data.frame(
+  Lag = integer(),
+  Hidden = integer(),
+  Train_RMSE = numeric(),
+  Train_MAE = numeric(),
+  Train_MAPE = numeric(),
+  Test_RMSE = numeric(),
+  Test_MAE = numeric(),
+  Test_MAPE = numeric()
+)
+
+# Loop through lags
+for (lag in 1:15) {
+  lagged_matrix <- embed(scaled_data, lag + 1)
+  colnames(lagged_matrix) <- c("Coal", paste0("Lag_", 1:lag))
+  lagged_df <- as.data.frame(lagged_matrix)
+  adjusted_years <- years[(lag + 1):length(years)]
+  lagged_df$Year <- adjusted_years
+
+  train_data <- lagged_df[lagged_df$Year %in% train_years, ]
+  test_data <- lagged_df[lagged_df$Year %in% test_years, ]
+
+  input_vars <- paste0("Lag_", 1:lag)
+  formula <- as.formula(paste("Coal ~", paste(input_vars, collapse = " + ")))
+  hidden_neurons <- round((2 * lag) / 3)
+
+  model <- neuralnet(formula, data = train_data, hidden = hidden_neurons, linear.output = TRUE)
+
+  train_pred_scaled <- predict(model, train_data[, input_vars, drop = FALSE])
+  train_pred <- train_pred_scaled * sd(raw_data$Coal) + mean(raw_data$Coal)
+  train_actual <- train_data$Coal * sd(raw_data$Coal) + mean(raw_data$Coal)
+
+  train_rmse <- sqrt(mean((train_pred - train_actual)^2))
+  train_mae <- mean(abs(train_pred - train_actual))
+  train_mape <- mean(abs((train_pred - train_actual) / train_actual)) * 100
+
+  test_pred_scaled <- predict(model, test_data[, input_vars, drop = FALSE])
+  test_pred <- test_pred_scaled * sd(raw_data$Coal) + mean(raw_data$Coal)
+  test_actual <- test_data$Coal * sd(raw_data$Coal) + mean(raw_data$Coal)
+
+  test_rmse <- sqrt(mean((test_pred - test_actual)^2))
+  test_mae <- mean(abs(test_pred - test_actual))
+  test_mape <- mean(abs((test_pred - test_actual) / test_actual)) * 100
+
+  results <- rbind(results, data.frame(
+    Lag = lag,
+    Hidden = hidden_neurons,
+    Train_RMSE = train_rmse,
+    Train_MAE = train_mae,
+    Train_MAPE = train_mape,
+    Test_RMSE = test_rmse,
+    Test_MAE = test_mae,
+    Test_MAPE = test_mape
+  ))
+
+  if (lag == 1 || lag == which.min(results$Test_RMSE)) {
+    # ----------------- START: Model Weights Extraction -----------------
+  weights_list <- model$weights[[1]]
+
+  input_to_hidden <- weights_list[[1]]
+  input_labels <- c("Bias", paste0("Lag_", 1:lag))
+  hidden_labels <- paste0("Hidden_", 1:ncol(input_to_hidden))
+  input_to_hidden_df <- as.data.frame(input_to_hidden)
+  rownames(input_to_hidden_df) <- input_labels
+  colnames(input_to_hidden_df) <- hidden_labels
+
+  hidden_to_output <- weights_list[[2]]
+  hidden_bias_labels <- c("Bias", paste0("Hidden_", 1:(nrow(hidden_to_output) - 1)))
+  output_label <- "Output"
+  hidden_to_output_df <- as.data.frame(hidden_to_output)
+  rownames(hidden_to_output_df) <- hidden_bias_labels
+  colnames(hidden_to_output_df) <- output_label
+
+  cat("\n============================\n")
+  cat("Lag:", lag, "| Hidden Neurons:", hidden_neurons, "\n")
+  cat("Input-to-Hidden Weights:\n")
+  print(input_to_hidden_df)
+  cat("\nHidden-to-Output Weights:\n")
+  print(hidden_to_output_df)
+  cat("============================\n")
+  # ----------------- END: Model Weights Extraction -----------------
+    png(paste0("train_plot_lag_", lag, ".png"), width = 800, height = 600)
+    plot(train_data$Year, train_actual, type = 'o', col = 'darkgreen',
+         xlab = 'Year', ylab = 'Coal Based CO2 Emission',
+         main = paste('Training Data | Year : 1930-2000 | Model : NNAR(', lag, ',', hidden_neurons, ')'),
+         lwd = 2, cex.lab = 1.3, cex.main = 1.5)
+    lines(train_data$Year, train_pred, col = 'orange', type = 'o', lwd = 2)
+    grid(col = "black", lwd = 2)
+    legend("topleft", legend = c("Actual (Training Data)", "Predicted (Training Data)"),
+           col = c("darkgreen", "orange"), lty = 1, lwd = 2)
+    dev.off()
+
+    png(paste0("test_plot_lag_", lag, ".png"), width = 800, height = 600)
+    plot(test_data$Year, test_actual, type = 'o', col = 'blue',
+         xlab = 'Year', ylab = 'Coal Based CO2 Emission',
+         main = paste('Test Data | Year : 2001-2020 | Model : NNAR(', lag, ',', hidden_neurons, ')'),
+         lwd = 2, cex.lab = 1.3, cex.main = 1.5)
+    lines(test_data$Year, test_pred, col = 'red', type = 'o', lwd = 2)
+    grid(col = "black", lwd = 2)
+    legend("topleft", legend = c("Actual (Test Data)", "Predicted (Test Data)"),
+           col = c("blue", "red"), lty = 1, lwd = 2)
+    dev.off()
+  }
+}
+
+# Print all results
+print(results)
+
+# Select best model based on Test RMSE
+best_model <- results[which.min(results$Test_RMSE), ]
+cat("\nBest NNAR Model:\n")
+print(best_model)
+
+# ----- Retrain best model on full data -----
+best_lag <- best_model$Lag
+best_hidden <- best_model$Hidden
+
+# Create lagged dataset for full data
+full_lagged_matrix <- embed(scaled_data, best_lag + 1)
+colnames(full_lagged_matrix) <- c("Coal", paste0("Lag_", 1:best_lag))
+full_df <- as.data.frame(full_lagged_matrix)
+
+# Build formula
+input_vars <- paste0("Lag_", 1:best_lag)
+formula <- as.formula(paste("Coal ~", paste(input_vars, collapse = " + ")))
+
+# Train on full data
+model_full <- neuralnet(formula, data = full_df, hidden = best_hidden, linear.output = TRUE)
+
+# ----- 10-year recursive forecasting -----
+last_values <- tail(scaled_data, best_lag)  # latest lag inputs
+forecast_scaled <- numeric(10)
+
+for (i in 1:10) {
+  # Prepare input for prediction
+  input <- as.data.frame(t(last_values[(length(last_values) - best_lag + 1):length(last_values)]))
+  colnames(input) <- input_vars
+  
+  # Predict next point
+  pred <- predict(model_full, input)
+  forecast_scaled[i] <- pred
+  
+  # Append prediction to last_values for next iteration
+  last_values <- c(last_values, pred)
+}
+
+# Unscale forecasted values
+forecast_unscaled <- forecast_scaled * sd(raw_data$Coal) + mean(raw_data$Coal)
+
+# Forecast years
+forecast_years <- (max(years) + 1):(max(years) + 10)
+
+# Print forecast table
+forecast_table <- data.frame(
+  Year = forecast_years,
+  Forecast = round(forecast_unscaled, 2)
+)
+
+cat("\n--- 10-Year Forecast Table ---\n")
+print(forecast_table)
+
+library(ggplot2)
+
+# Calculate residuals on training data to estimate error for CI
+train_pred_scaled_full <- predict(model_full, full_df[, input_vars])
+train_pred_full <- train_pred_scaled_full * sd(raw_data$Coal) + mean(raw_data$Coal)
+train_actual_full <- full_df$Coal * sd(raw_data$Coal) + mean(raw_data$Coal)
+residuals <- train_actual_full - train_pred_full
+resid_sd <- sd(residuals)
+resid_df <- data.frame(Residuals = residuals)
+
+#-----------------------------------------------------------------------------------------
+residual_years <- years[(best_lag + 1):length(years)]  # match residuals length
+
+# 1. Residuals vs. Time
+plot(residual_years, residuals, type = "o", col = "darkred",
+     xlab = "Year", ylab = "Residuals", main = "Residuals Over Time")
+abline(h = 0, lty = 2, col = "gray")
+grid()
+
+# 2. Histogram of residuals
+ggplot(resid_df, aes(x = Residuals)) +
+  geom_histogram(aes(y = ..density..),
+                 bins = 30, fill = "#69b3a2", color = "white", alpha = 0.7) +
+  geom_density(fill = "red", alpha = 0.3, color = "red", size = 0.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  labs(title = "Histogram of Residuals with Transparent Density Curve",
+       x = "Residuals", y = "Density") +
+  theme_minimal(base_size = 14)
+
+# 3. QQ Plot
+qqnorm(residuals, main = "Q-Q Plot of Residuals", col = "blue")
+qqline(residuals, col = "red")
+
+# 4. ACF plot
+acf(residuals, main = "ACF of Residuals")
+
+# 5. Ljung-Box test (check if residuals are white noise)
+lb_test <- Box.test(residuals, lag = 10, type = "Ljung-Box")
+cat("\n--- Ljung-Box Test ---\n")
+print(lb_test)
+
+# 6. Shapiro-Wilk normality test
+shapiro_test <- shapiro.test(residuals)
+cat("\n--- Shapiro-Wilk Normality Test ---\n")
+print(shapiro_test)
+#----------------------------------------------------------------------------------
+
+# Construct confidence intervals for forecasts (95%)
+upper_ci <- forecast_unscaled + 1.96 * resid_sd
+lower_ci <- forecast_unscaled - 1.96 * resid_sd
+
+# Combine historical and forecast data for plotting
+historical_df <- data.frame(
+  Year = years,
+  Coal = raw_data$Coal,
+  Type = "Historical"
+)
+
+forecast_df <- data.frame(
+  Year = forecast_years,
+  Coal = forecast_unscaled,
+  Upper = upper_ci,
+  Lower = lower_ci,
+  Type = "Forecast"
+)
+
+# Combine
+plot_df <- rbind(
+  historical_df[, c("Year", "Coal", "Type")],
+  forecast_df[, c("Year", "Coal", "Type")]
+)
+
+# Extend forecast_df for continuous line from historical to forecast
+forecast_df_cont <- rbind(
+  data.frame(
+    Year = max(historical_df$Year),
+    Coal = tail(historical_df$Coal, 1),
+    Upper = NA,
+    Lower = NA,
+    Type = "Forecast"
+  ),
+  forecast_df
+)
+
+# Define year range (start to end of forecast)
+year_range <- min(historical_df$Year):max(forecast_df$Year)
+
+# Plot with ggplot2 (continuous line and more x-axis ticks)
+ggplot() +
+  # Historical line and points
+  geom_line(data = historical_df, aes(x = Year, y = Coal, color = "Historical"), size = 1.2) +
+  geom_point(data = historical_df, aes(x = Year, y = Coal, color = "Historical"), size = 1.5) +
+  
+  # Forecast line with last historical point
+  geom_line(data = forecast_df_cont, aes(x = Year, y = Coal, color = "Forecast"), 
+            size = 1.2, linetype = "solid") +
+  geom_point(data = forecast_df, aes(x = Year, y = Coal, color = "Forecast"), 
+             size = 2, shape = 17) +
+  
+  # Confidence ribbon
+  geom_ribbon(data = forecast_df, aes(x = Year, ymin = Lower, ymax = Upper),
+              fill = "orange", alpha = 0.3) +
+
+  # Optional vertical line
+  # geom_vline(xintercept = max(years), linetype = "dotted", color = "gray30", size = 1) +
+
+  # Manual control of X-axis breaks (e.g., every 2 years)
+  scale_x_continuous(breaks = seq(min(year_range), max(year_range), by = 10)) +
+
+  labs(title = "10-Year Forecasting of CO2 Emissions (Per Capita) in India | NNAR Model", subtitle = "Year : 2021-2030",
+       x = "Year", y = "Coal Based CO2 Emission",
+       color = "") +
+  
+  scale_color_manual(values = c("Historical" = "#1b9e77", "Forecast" = "#d95f02")) +
+
+  theme_gdocs(base_size = 15) +
+  theme(
+    legend.position = c(0.15, 0.85),
+    legend.background = element_rect(fill = alpha("white", 0.7)),
+    panel.grid.major = element_line(color = "gray90"),
+    panel.grid.minor = element_blank()
+  )
+
+forecast_df1 <- data.frame(
+  Year = forecast_years,
+  Coal = forecast_unscaled,
+  Upper = upper_ci,
+  Lower = lower_ci,
+  Type = "Forecast"
+)
+forecast_df1
+```
+*ANN Model Building*
+
+```{r}
+# Load required libraries
+library(neuralnet)
+library(ggplot2)
+library(caret)
+library(tidyverse)
+
+# Normalize the data (scale Coal between 0 and 1)
+scaled_data <- scale(raw_data$Coal)
+
+# Create lagged data (1 lag)
+lagged_data <- data.frame(
+  Coal = scaled_data[2:length(scaled_data)],
+  Coal_lag = scaled_data[1:(length(scaled_data) - 1)]
+)
+
+# Add corresponding years
+lagged_data$Year <- raw_data$Year[2:length(raw_data$Year)]
+
+# Define training and testing periods
+train_years <- 1930:2000
+test_years  <- 2001:2020
+
+# Split data
+train_data <- lagged_data[lagged_data$Year %in% train_years, ]
+test_data  <- lagged_data[lagged_data$Year %in% test_years, ]
+
+# Initialize results
+results <- data.frame(
+  Hidden = integer(),
+  Train_RMSE = numeric(),
+  Train_MAE = numeric(),
+  Train_MAPE = numeric(),
+  Test_RMSE = numeric(),
+  Test_MAE = numeric(),
+  Test_MAPE = numeric()
+)
+
+# Loop through 1 to 15 hidden neurons
+for (h in 1:8) {
+  # Train the model
+  model <- neuralnet(Coal ~ Coal_lag, data = train_data, hidden = h, linear.output = TRUE)
+  
+  # Predict on training data
+  train_pred_scaled <- predict(model, train_data[, "Coal_lag", drop = FALSE])
+  train_pred <- train_pred_scaled * sd(raw_data$Coal) + mean(raw_data$Coal)
+  train_actual <- train_data$Coal * sd(raw_data$Coal) + mean(raw_data$Coal)
+  
+  # Predict on test data
+  test_pred_scaled <- predict(model, test_data[, "Coal_lag", drop = FALSE])
+  test_pred <- test_pred_scaled * sd(raw_data$Coal) + mean(raw_data$Coal)
+  test_actual <- test_data$Coal * sd(raw_data$Coal) + mean(raw_data$Coal)
+  
+  # Calculate training errors
+  train_rmse <- sqrt(mean((train_pred - train_actual)^2))
+  train_mae  <- mean(abs(train_pred - train_actual))
+  train_mape <- mean(abs((train_pred - train_actual) / train_actual)) * 100
+  
+  # Calculate testing errors
+  test_rmse <- sqrt(mean((test_pred - test_actual)^2))
+  test_mae  <- mean(abs(test_pred - test_actual))
+  test_mape <- mean(abs((test_pred - test_actual) / test_actual)) * 100
+  
+  # Store the results
+  results <- rbind(results, data.frame(
+    Hidden = h,
+    Train_RMSE = train_rmse,
+    Train_MAE = train_mae,
+    Train_MAPE = train_mape,
+    Test_RMSE = test_rmse,
+    Test_MAE = test_mae,
+    Test_MAPE = test_mape
+  ))
+  
+  # Print progress
+  cat(sprintf("Hidden: %2d | Train RMSE: %.4f | Test RMSE: %.4f | Test MAPE: %.2f%%\n", 
+              h, train_rmse, test_rmse, test_mape))
+}
+
+# Print all metrics
+print(results)
+
+# Identify the best model based on Test RMSE
+best_hidden <- results$Hidden[which.min(results$Test_RMSE)]
+cat("\nBest model has", best_hidden, "hidden neurons\n")
+
+# Retrain best model for final plots
+best_model <- neuralnet(Coal ~ Coal_lag, data = train_data, hidden = best_hidden, linear.output = TRUE)
+
+# Predict with best model
+train_pred <- predict(best_model, train_data[, "Coal_lag", drop = FALSE]) * sd(raw_data$Coal) + mean(raw_data$Coal)
+test_pred  <- predict(best_model, test_data[, "Coal_lag", drop = FALSE]) * sd(raw_data$Coal) + mean(raw_data$Coal)
+
+# Actual values
+train_actual <- train_data$Coal * sd(raw_data$Coal) + mean(raw_data$Coal)
+test_actual  <- test_data$Coal * sd(raw_data$Coal) + mean(raw_data$Coal)
+
+# Plot: Training
+plot(train_data$Year, train_actual, type = 'o', col = 'darkgreen',
+     xlab = 'Year', ylab = 'Coal Based CO2 Emission',
+     main = paste('Training Data | ANN Model with Hidden Neurons =', best_hidden), lwd = 2, cex.lab = 1.3, cex.main = 1.5)
+lines(train_data$Year, train_pred, col = 'orange', type = 'o', lwd = 2)
+grid(col = "black", lwd = 2)
+legend("topleft", legend = c("Actual", "Predicted"),
+       col = c("darkgreen", "orange"), lty = 1, lwd = 2)
+
+# Plot: Test
+plot(test_data$Year, test_actual, type = 'o', col = 'blue',
+     xlab = 'Year', ylab = 'Coal Based CO2 Emission (per capita)',
+     main = paste('Test Data | ANN Model with Hidden Neurons =', best_hidden), lwd = 2,cex.lab = 1.3, cex.main = 1.5)
+lines(test_data$Year, test_pred, col = 'red', type = 'o', lwd = 2)
+grid(col = "black", lwd = 2)
+legend("topleft", legend = c("Actual", "Predicted"),
+       col = c("blue", "red"), lty = 1, lwd = 2)
+
+# ---- 10-Year Forecast Using Best ANN Model ----
+
+# Get last known value for recursive forecasting
+last_value <- tail(lagged_data$Coal_lag, 1)
+
+# Initialize vector for storing forecasts (scaled)
+forecast_scaled <- numeric(10)
+input <- last_value
+
+# Forecast loop
+for (i in 1:10) {
+  input_df <- data.frame(Coal_lag = input)
+  pred_scaled <- predict(best_model, input_df)
+  forecast_scaled[i] <- pred_scaled
+  input <- pred_scaled  # update input with current prediction
+}
+
+# Unscale forecasted values
+forecast_unscaled <- forecast_scaled * sd(raw_data$Coal) + mean(raw_data$Coal)
+
+# Create forecast year vector
+forecast_years <- (max(lagged_data$Year) + 1):(max(lagged_data$Year) + 10)
+
+# Create forecast dataframe
+forecast_df <- data.frame(
+  Year = forecast_years,
+  Forecast = round(forecast_unscaled, 2)
+)
+
+# ---- Plot with ggplot2 ----
+
+# Prepare residuals from training set for CI calculation
+residuals <- train_actual - train_pred
+resid_sd <- sd(residuals)
+
+# Confidence intervals (95%)
+forecast_df$Upper <- forecast_df$Forecast + 1.96 * resid_sd
+forecast_df$Lower <- forecast_df$Forecast - 1.96 * resid_sd
+
+# Historical data for ggplot
+historical_df <- data.frame(
+  Year = raw_data$Year,
+  Coal = raw_data$Coal,
+  Type = "Historical"
+)
+
+# Forecast data
+forecast_gg <- data.frame(
+  Year = forecast_df$Year,
+  Coal = forecast_df$Forecast,
+  Type = "Forecast",
+  Upper = forecast_df$Upper,
+  Lower = forecast_df$Lower
+)
+
+# Combine for plotting
+plot_df <- rbind(
+  historical_df[, c("Year", "Coal", "Type")],
+  forecast_gg[, c("Year", "Coal", "Type")]
+)
+
+# Plot using ggplot
+# Add connecting segment between last historical and first forecast point
+connect_df <- data.frame(
+  Year = c(max(historical_df$Year), min(forecast_gg$Year)),
+  Coal = c(tail(historical_df$Coal, 1), head(forecast_gg$Coal, 1))
+)
+
+all_years <- c(historical_df$Year, forecast_gg$Year)
+# Define extended x-axis limits (5 years beyond the last forecast year)
+x_min <- min(all_years)
+x_max <- max(all_years) + 5  # still extending by 5 years
+
+# Define breaks every 10 years from min to extended max
+x_breaks <- seq(x_min, x_max, by = 10)
+
+ggplot() +
+  geom_line(data = historical_df, aes(x = Year, y = Coal, color = "Historical"), size = 1.2) +
+  geom_point(data = historical_df, aes(x = Year, y = Coal, color = "Historical"), size = 1.5) +
+  geom_line(data = forecast_gg, aes(x = Year, y = Coal, color = "Forecast"), linetype = "solid", size = 1.2) +
+  geom_point(data = forecast_gg, aes(x = Year, y = Coal, color = "Forecast"), size = 2, shape = 17) +
+  geom_line(data = connect_df, aes(x = Year, y = Coal), color = "#1b9e77", size = 1.2) +  
+  geom_ribbon(data = forecast_gg, aes(x = Year, ymin = Lower, ymax = Upper), fill = "orange", alpha = 0.2) +
+  #geom_vline(xintercept = max(historical_df$Year), linetype = "dotted", color = "gray30", size = 1) +
+  scale_color_manual(values = c("Historical" = "#1b9e77", "Forecast" = "#d95f02")) +
+  scale_x_continuous(
+    limits = c(x_min, x_max),
+    breaks = x_breaks
+  ) +
+  labs(title = "10-Year Forecasting of CO2 Emissions (Per Capita) in India | ANN Model",
+       x = "Year", y = "Coal Based CO2 Emission",
+       color = "", subtitle = "Year : 2021 - 2030") +
+  theme_gdocs(base_size = 15) +
+  theme(
+    legend.position = c(0.15, 0.85),
+    legend.background = element_rect(fill = alpha("white", 0.7)),
+    panel.grid.major = element_line(color = "gray90"),
+    panel.grid.minor = element_blank()
+  )
+
+
+# ---- Print Forecast Table ----
+cat("\n--- 10-Year Forecast Table ---\n")
+print(forecast_df[, c("Year", "Forecast", "Lower", "Upper")])
+
+library(ggplot2)
+library(gridExtra)  # For arranging multiple plots
+library(stats)
+
+# Residuals vector (already available)
+residuals <- train_actual - train_pred
+
+# Fitted values
+fitted_values <- train_pred
+
+residuals_df <- data.frame(
+  Residuals = residuals,
+  Fitted = fitted_values
+)
+# 2. Histogram of residuals
+ggplot(residuals_df, aes(x = Residuals)) +
+  geom_histogram(aes(y = ..density..),
+                 bins = 30, fill = "#69b3a2", color = "white", alpha = 0.7) +
+  geom_density(fill = "red", alpha = 0.3, color = "red", size = 0.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  labs(title = "Histogram of Residuals",
+       x = "Residuals", y = "Density") +
+  theme_minimal(base_size = 14)
+
+# Compute theoretical quantiles and sample quantiles for ggplot
+# Q-Q plot values for residuals
+qq_vals <- qqnorm(residuals, plot.it = FALSE)
+qq_df <- data.frame(
+  Theoretical = qq_vals$x,
+  Sample = qq_vals$y
+)
+q_theoretical <- quantile(qq_df$Theoretical, probs = c(0.25, 0.75))
+q_sample <- quantile(qq_df$Sample, probs = c(0.25, 0.75))
+
+slope <- diff(q_sample) / diff(q_theoretical)
+intercept <- q_sample[1] - slope * q_theoretical[1]
+
+ggplot(qq_df, aes(x = Theoretical, y = Sample)) +
+  geom_point(color = "blue", shape = 1,size = 2) +
+  geom_abline(slope = slope, intercept = intercept, linetype = "solid", color = "red") +
+  labs(title = "Normal Q-Q Plot of Residuals", x = "Theoretical Quantiles", y = "Sample Quantiles") +
+  theme_minimal(base_size = 14)
+
+# Get acf values (excluding lag 0)
+acf(residuals, main = "ACF of Residuals")
+
+ggplot(residuals_df, aes(x = Fitted, y = Residuals)) +
+  geom_point(color = "darkgreen", size = 2, alpha = 0.7) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Residuals vs Fitted Values", x = "Fitted Values", y = "Residuals") +
+  theme_minimal(base_size = 14)
+
+# 5. Ljung-Box test (check if residuals are white noise)
+lb_test <- Box.test(residuals, lag = 10, type = "Ljung-Box")
+cat("\n--- Ljung-Box Test ---\n")
+print(lb_test)
+
+# 6. Shapiro-Wilk normality test
+shapiro_test <- shapiro.test(residuals)
+cat("\n--- Shapiro-Wilk Normality Test ---\n")
+print(shapiro_test)
+```
+
+
+
